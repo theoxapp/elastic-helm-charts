@@ -6,24 +6,58 @@ replicas: 1
 #
 # Note that when overriding logstash.yml, `http.host: 0.0.0.0` should always be included
 # to make default probes work.
-logstashConfig: {}
-#  logstash.yml: |
-#    key:
-#      nestedkey: value
+logstashConfig:
+ logstash.yml: |
+    http.host: "0.0.0.0"
+    xpack.monitoring.elasticsearch.hosts: [ "http://elasticsearch-master:9200" ]
 #  log4j2.properties: |
 #    key = value
 
 # Allows you to add any pipeline files in /usr/share/logstash/pipeline/
 ### ***warn*** there is a hardcoded logstash.conf in the image, override it first
-logstashPipeline: {}
-#  logstash.conf: |
-#    input {
-#      exec {
-#        command => "uptime"
-#        interval => 30
-#      }
-#    }
-#    output { stdout { } }
+logstashPipeline:
+  logstash.conf: |
+    input {
+      beats {
+        port => 5044
+      }
+    }
+    filter {
+      if [kubernetes][container][name] == "filebeat" {
+          drop { }
+      }
+      if [kubernetes][container][name] == "logstash" {
+          drop { }
+      }
+      if [kubernetes][namespace] {
+        mutate{
+          replace => { "namespace" => "%{[kubernetes][namespace]}" }
+        }
+      } else {
+        mutate{
+          add_field => { "namespace" => "noise" }
+        }
+      }
+      if [kubernetes][container][name] {
+        mutate{
+          replace => { "container_name" => "%{[kubernetes][container][name]}" }
+        }
+      }
+      if [kubernetes][pod][name]{
+        mutate{
+          replace => { "pod" => "%{[kubernetes][pod][name]}" }
+        }
+      }
+      json {
+        source => "message"
+      }
+    }
+    output {
+      elasticsearch {
+        hosts => ["http://elasticsearch-master:9200"]
+        index => "%{[namespace]}-logs-%{+yyyy.MM.dd}"
+      }
+    }
 
 # Allows you to add any pattern files in your custom pattern dir
 logstashPatternDir: "/usr/share/logstash/patterns/"
@@ -165,7 +199,14 @@ antiAffinity: "hard"
 
 # This is the node affinity settings as defined in
 # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity
-nodeAffinity: {}
+nodeAffinity:
+  requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+      - matchExpressions:
+          - key: "node-type"
+            operator: In
+            values:
+              - data
 
 # This is inter-pod affinity settings as defined in
 # https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#inter-pod-affinity-and-anti-affinity
@@ -261,19 +302,18 @@ lifecycle:
   #     command: ["/bin/sh", "-c", "echo Hello from the postStart handler > /usr/share/message"]
 
 service:
-  {}
-  # annotations: {}
-  # type: ClusterIP
-  # loadBalancerIP: ""
-  # ports:
-  #   - name: beats
-  #     port: 5044
-  #     protocol: TCP
-  #     targetPort: 5044
-  #   - name: http
-  #     port: 8080
-  #     protocol: TCP
-  #     targetPort: 8080
+  annotations: {}
+  type: ClusterIP
+  loadBalancerIP: ""
+  ports:
+    - name: beats
+      port: 5044
+      protocol: TCP
+      targetPort: 5044
+    - name: http
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
 
 ingress:
   enabled: false

@@ -39,9 +39,9 @@ daemonset:
             - logs_path:
                 logs_path: "/var/log/containers/"
 
-      output.elasticsearch:
-        host: '${NODE_NAME}'
-        hosts: '${ELASTICSEARCH_HOSTS:elasticsearch-master:9200}'
+      output.logstash:
+        hosts: ["logstash-logstash:5044"]
+        pipelining: 100
   # Only used when updateStrategy is set to "RollingUpdate"
   maxUnavailable: 1
   nodeSelector: {}
@@ -61,10 +61,10 @@ daemonset:
   resources:
     requests:
       cpu: "100m"
-      memory: "100Mi"
+      memory: "200Mi"
     limits:
       cpu: "1000m"
-      memory: "200Mi"
+      memory: "400Mi"
   tolerations: []
 
 deployment:
